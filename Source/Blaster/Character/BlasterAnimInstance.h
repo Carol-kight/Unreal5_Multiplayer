@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
+#include "Blaster/BlasterTypes/TurningInPlace.h"
 #include "BlasterAnimInstance.generated.h"
 
 /**
@@ -38,4 +39,28 @@ private:
 
 	UPROPERTY(BlueprintReadOnly, Category = Character, meta = (AllowPrivateAccess = "true"))
 	bool bIsAiming;
+
+	UPROPERTY(BlueprintReadOnly, Category = Character, meta = (AllowPrivateAccess = "true"))
+	float YawOffset;
+
+	UPROPERTY(BlueprintReadOnly, Category = Character, meta = (AllowPrivateAccess = "true"))
+	float Lean;
+
+	UPROPERTY(BlueprintReadOnly, Category = Character, meta = (AllowPrivateAccess = "true"))
+	float AO_Yaw;
+
+	UPROPERTY(BlueprintReadOnly, Category = Character, meta = (AllowPrivateAccess = "true"))
+	float AO_Pitch;
+
+	UPROPERTY(BlueprintReadOnly, Category = Character, meta = (AllowPrivateAccess = "true"))
+	FTransform LeftHandTransform;
+
+	class AWeapon* EquippedWeapon;
+
+	FRotator CharacterRotationLastFrame;
+	FRotator CharacterRotation;
+	FRotator DeltaRotation;
+
+	UPROPERTY(BlueprintReadOnly, Category = Character, meta = (AllowPrivateAccess = "true"))
+	ETurningInPlace TurningInPlace;
 };

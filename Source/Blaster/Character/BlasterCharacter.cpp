@@ -9,6 +9,8 @@
 #include "Net/UnrealNetwork.h"
 #include "Blaster/Weapon/Weapon.h"
 #include "Blaster/BlasterComponents/CombatComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Kismet/KismetMathLibrary.h"
 
 // Sets default values
 ABlasterCharacter::ABlasterCharacter()
@@ -35,6 +37,11 @@ ABlasterCharacter::ABlasterCharacter()
 	// Components很特殊，不需要注册等操作，直接设置为true就可以复制
 	Combat->SetIsReplicated(true);
 	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
+
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore);
+
+	TurningInPlace = ETurningInPlace::ETIP_NotTurning;
 }
 
 // Called when the game starts or when spawned
@@ -57,6 +64,8 @@ void ABlasterCharacter::PostInitializeComponents()
 void ABlasterCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	AimOffset(DeltaTime);
 }
 
 void ABlasterCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -136,7 +145,11 @@ void ABlasterCharacter::EquipButtonPressd()
 
 void ABlasterCharacter::CrouchButtonPressd()
 {
-	Crouch();
+	// 在空中不能下蹲
+	if (!GetCharacterMovement()->IsFalling())
+	{
+		Crouch();
+	}
 }
 
 void ABlasterCharacter::CrouchButtonReleased()
@@ -157,6 +170,67 @@ void ABlasterCharacter::AimButtonReleased()
 	if (Combat)
 	{
 		Combat->SetAiming(false);
+	}
+}
+
+void ABlasterCharacter::AimOffset(float DeltaTime)
+{
+	if (Combat && Combat->EquippedWeapon == nullptr) return;
+	FVector Velocity = GetVelocity();
+	Velocity.Z = 0;
+	float speed = Velocity.Size();
+	bool bIsInAir = GetCharacterMovement()->IsFalling();
+
+	if (speed == 0.f && !bIsInAir) // standing still, not jumping
+	{
+		FRotator CurrentAimRotation = FRotator(0.f, GetBaseAimRotation().Yaw, 0.f);
+		FRotator DeltaAimRotation = UKismetMathLibrary::NormalizedDeltaRotator(CurrentAimRotation, StartingAimRotation);
+		AO_Yaw = DeltaAimRotation.Yaw;
+		if (TurningInPlace == ETurningInPlace::ETIP_NotTurning)
+		{
+			Interp_AO_Yaw = AO_Yaw;
+		}
+		bUseControllerRotationYaw = true;
+		TurnInPlace(DeltaTime);
+	}
+	if (speed > 0.f || bIsInAir)
+	{
+		StartingAimRotation = FRotator(0.f, GetBaseAimRotation().Yaw, 0.f);
+		AO_Yaw = 0.f;
+		// 恢复用鼠标控制角色旋转
+		bUseControllerRotationYaw = true;
+		TurningInPlace = ETurningInPlace::ETIP_NotTurning;
+	}
+	AO_Pitch = GetBaseAimRotation().Pitch;
+	if (AO_Pitch > 90.f && !IsLocallyControlled())
+	{
+		// map pithc from [270, 360) to [-90, 0)
+		FVector2D InRange(270.f, 360.f);
+		FVector2D OutRange(-90.f, 0.f);
+		AO_Pitch = FMath::GetMappedRangeValueClamped(InRange, OutRange, AO_Pitch);
+	}
+}
+
+void ABlasterCharacter::TurnInPlace(float DeltaTime)
+{
+	if (AO_Yaw > 90.f)
+	{
+		TurningInPlace = ETurningInPlace::ETIP_Right;
+	}
+	else if (AO_Yaw < -90.f)
+	{
+		TurningInPlace = ETurningInPlace::ETIP_Left;
+	}
+	// 逐渐回到NotTurning的状态
+	if (TurningInPlace != ETurningInPlace::ETIP_NotTurning)
+	{
+		Interp_AO_Yaw = FMath::FInterpTo(Interp_AO_Yaw, 0.f, DeltaTime, 4.0f);
+		AO_Yaw = Interp_AO_Yaw;
+		if (FMath::Abs(AO_Yaw) < 15.f) 
+		{
+			TurningInPlace = ETurningInPlace::ETIP_NotTurning;
+			StartingAimRotation = FRotator(0.f, GetBaseAimRotation().Yaw, 0.f);
+		}
 	}
 }
 
@@ -203,6 +277,12 @@ bool ABlasterCharacter::IsWeaponEquipped()
 bool ABlasterCharacter::IsAiming()
 {
 	return Combat && Combat->bIsAiming;
+}
+
+AWeapon* ABlasterCharacter::GetEquippedWeapon()
+{
+	if (Combat == nullptr) return nullptr;
+	return Combat->EquippedWeapon;
 }
 
 
