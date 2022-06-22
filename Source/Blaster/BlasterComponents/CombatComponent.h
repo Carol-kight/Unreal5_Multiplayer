@@ -35,14 +35,18 @@ protected:
 	void FireButtonPressed(bool bPressed);
 
 	UFUNCTION(Server, Reliable)
-	void ServerFire();
+	void ServerFire(const FVector_NetQuantize& TraceHitTarget);
 
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastFire();
+	void MulticastFire(const FVector_NetQuantize& TraceHitTarget);
 
 	void TraceUnderCrosshairs(FHitResult& TraceHitResult);
+
+	void SetHUDCrosshairs(float DeltaTime);
 private:
-	class ABlasterCharacter* BlasterCharacter;
+	class ABlasterCharacter* Character;
+	class ABlasterPlayerController* Controller;
+	class ABlasterHUD* HUD;
 
 	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon)
 	AWeapon* EquippedWeapon;
@@ -59,6 +63,12 @@ private:
 	bool bFireButtonPressed;
 
 	FVector HitTarget;
+
+	/*
+	* HUD and crosshairs
+	*/
+	float CrosshairVelocityFactor;
+	float CrosshairInAirFactor;
 public:	
 
 };
