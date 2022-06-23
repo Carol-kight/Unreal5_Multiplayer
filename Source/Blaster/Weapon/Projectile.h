@@ -22,7 +22,7 @@ protected:
 	virtual void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpluse, const FHitResult& Hit);
 
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastHit();
+	void MulticastHit(ABlasterCharacter* BlasterCharacter);
 private:
 	UPROPERTY(EditAnywhere)
 	class UBoxComponent* CollisionBox;

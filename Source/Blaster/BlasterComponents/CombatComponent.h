@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Blaster/HUD/BlasterHUD.h"
 #include "CombatComponent.generated.h"
 
 #define TRACE_LENGTH 80000.f
@@ -34,6 +35,8 @@ protected:
 
 	void FireButtonPressed(bool bPressed);
 
+	void Fire();
+
 	UFUNCTION(Server, Reliable)
 	void ServerFire(const FVector_NetQuantize& TraceHitTarget);
 
@@ -60,9 +63,7 @@ private:
 	UPROPERTY(EditAnywhere)
 	float AimWalkSpeed;
 
-	bool bFireButtonPressed;
-
-	FVector HitTarget;
+	bool bFireButtonPressed = false;
 
 	/*
 	* HUD and crosshairs
@@ -70,6 +71,12 @@ private:
 
 	float CrosshairVelocityFactor;
 	float CrosshairInAirFactor;
+	float CrosshairAimingFactor;
+	float CrosshairShootingFactor;
+
+	FVector HitTarget;
+
+	FHUDPackage HUDPackage;
 
 	/**
 	 * Aiming and FOV
@@ -87,6 +94,16 @@ private:
 	float CurrentFOV;
 
 	void InterpFOV(float DeltaTime);
+
+	/**
+	 * Automatic Fire
+	 */
+	bool bCanFire = true;
+
+	FTimerHandle FireTimer;
+
+	void StartFierTimer();
+	void FireTimerFinished();
 public:	
 
 };
