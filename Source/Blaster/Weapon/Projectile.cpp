@@ -66,18 +66,11 @@ void AProjectile::Tick(float DeltaTime)
 
 void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpluse, const FHitResult& Hit)
 {
-	ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(OtherActor);
-	// 在服务器执行
-	MulticastHit(BlasterCharacter);
+	MulticastHit();
 }
 
-void AProjectile::MulticastHit_Implementation(ABlasterCharacter* BlasterCharacter)
+void AProjectile::MulticastHit_Implementation()
 {
-	if (BlasterCharacter)
-	{
-		BlasterCharacter->PlayHitReactionMontage();
-	}
-	// 复制到所有客户端
 	Destroy();
 }
 

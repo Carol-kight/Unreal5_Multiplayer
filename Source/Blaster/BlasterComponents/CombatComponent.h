@@ -102,7 +102,7 @@ private:
 
 	FTimerHandle FireTimer;
 
-	void StartFierTimer();
+	void StartFireTimer();
 	void FireTimerFinished();
 public:	
 
