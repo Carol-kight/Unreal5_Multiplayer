@@ -29,7 +29,7 @@ public:
 	void ShowPickUpWidget(bool bShowWidget);
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void Fire(const FVector& HitTarget);
-
+	void Dropped();
 	/**
 	 * Textures for the weapon crosshairs
 	*/
