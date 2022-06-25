@@ -31,6 +31,8 @@ void UCombatComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 
 	DOREPLIFETIME(UCombatComponent, EquippedWeapon);
 	DOREPLIFETIME(UCombatComponent, bIsAiming);
+	DOREPLIFETIME_CONDITION(UCombatComponent, CarriedAmmo, COND_OwnerOnly);
+	DOREPLIFETIME(UCombatComponent, CombatState);
 }
 
 // Called when the game starts
@@ -46,6 +48,10 @@ void UCombatComponent::BeginPlay()
 		{
 			DefaultFOV = Character->GetFollowCamera()->FieldOfView;
 			CurrentFOV = DefaultFOV;
+		}
+		if (Character->HasAuthority())
+		{
+			InitializeCarriedAmmo();
 		}
 	}
 }
@@ -77,8 +83,7 @@ void UCombatComponent::FireButtonPressed(bool bPressed)
 
 void UCombatComponent::Fire()
 {
-	//UE_LOG(LogTemp, Warning, TEXT("CanFire:%d"), (int)bCanFire);
-	if (bCanFire == true)
+	if (CanFire())
 	{
 		bCanFire = false;
 		ServerFire(HitTarget);
@@ -119,7 +124,7 @@ void UCombatComponent::ServerFire_Implementation(const FVector_NetQuantize& Trac
 void UCombatComponent::MulticastFire_Implementation(const FVector_NetQuantize& TraceHitTarget)
 {
 	if (EquippedWeapon == nullptr) return;
-	if (Character)
+	if (Character && CombatState == ECombatState::ECS_Unoccupied)
 	{
 		Character->PlayFireMontage(bIsAiming);
 		EquippedWeapon->Fire(TraceHitTarget);
@@ -130,6 +135,11 @@ void UCombatComponent::EquipWeapon(AWeapon* WeaponToEquip)
 {
 	if (Character == nullptr || WeaponToEquip == nullptr) return;
 
+	if (EquippedWeapon)
+	{
+		EquippedWeapon->Dropped();
+	}
+
 	EquippedWeapon = WeaponToEquip;
 	EquippedWeapon->SetWeaponState(EWeaponState::EWS_Equipped);
 	const USkeletalMeshSocket* HandSocket = Character->GetMesh()->GetSocketByName(FName("RightHandSocket"));
@@ -137,8 +147,25 @@ void UCombatComponent::EquipWeapon(AWeapon* WeaponToEquip)
 	{
 		HandSocket->AttachActor(EquippedWeapon, Character->GetMesh());
 	}
+
 	// 主要用于网络复制
 	EquippedWeapon->SetOwner(Character);
+	// 设置Ammo
+	EquippedWeapon->SetHUDAmmo();
+
+	// 设置CarriedAmmo
+	if (CarriedAmmoMap.Contains(EquippedWeapon->GetWeaponType()))
+	{
+		CarriedAmmo = CarriedAmmoMap[EquippedWeapon->GetWeaponType()];
+	}
+
+	Controller = Controller == nullptr ? Cast<ABlasterPlayerController>(Character->Controller) : Controller;
+	if (Controller)
+	{
+		Controller->SetHUDCarriedAmmo(CarriedAmmo);
+	}
+
+	// 不能绕着自己旋转，让鼠标控制人物视角旋转
 	Character->GetCharacterMovement()->bOrientRotationToMovement = false;
 	Character->bUseControllerRotationYaw = true;
 }
@@ -315,3 +342,73 @@ void UCombatComponent::ServerSetAiming_Implementation(bool bAiming)
 	}
 }
 
+bool UCombatComponent::CanFire()
+{
+	if (EquippedWeapon == nullptr) return false;
+	return !EquippedWeapon->IsEmpty() && bCanFire && CombatState == ECombatState::ECS_Unoccupied;
+}
+
+void UCombatComponent::OnRep_CarriedAmmo()
+{
+	Controller = Controller == nullptr ? Cast<ABlasterPlayerController>(Character->Controller) : Controller;
+	if (Controller)
+	{
+		Controller->SetHUDCarriedAmmo(CarriedAmmo);
+	}
+}
+
+void UCombatComponent::InitializeCarriedAmmo()
+{
+	CarriedAmmoMap.Emplace(EWeaponType::EWT_AssaultRifle, StartingARAmmo);
+}
+
+void UCombatComponent::Reload()
+{
+	if (CarriedAmmo > 0 && CombatState != ECombatState::ECS_Reloading)
+	{
+		ServerReload();
+	}
+}
+
+void UCombatComponent::ServerReload_Implementation()
+{
+	if (Character == nullptr) return;
+	// 修改CombatState复制到所有客户端，调用OnRep_CombatState
+	CombatState = ECombatState::ECS_Reloading;
+	// 服务器执行
+	HandleReload();
+}
+
+void UCombatComponent::FinishReloading()
+{
+	if (Character == nullptr) return;
+	if (Character->HasAuthority())
+	{
+		CombatState = ECombatState::ECS_Unoccupied;
+	}
+	if (bFireButtonPressed)
+	{
+		Fire();
+	}
+}
+
+void UCombatComponent::OnRep_CombatState()
+{
+	switch (CombatState)
+	{
+	case ECombatState::ECS_Reloading:
+		HandleReload();
+		break;
+	case ECombatState::ECS_Unoccupied:
+		if (bFireButtonPressed)
+		{
+			Fire();
+		}
+		break;
+	}
+}
+
+void UCombatComponent::HandleReload()
+{
+	Character->PlayReloadMontage();
+}

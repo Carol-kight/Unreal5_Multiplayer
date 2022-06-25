@@ -7,6 +7,7 @@
 #include "Blaster/BlasterTypes/TurningInPlace.h"
 #include "Blaster/Interfaces/InteractWithCrosshairsInterface.h"
 #include "Components/TimelineComponent.h"
+#include "Blaster/BlasterTypes/CombatState.h"
 #include "BlasterCharacter.generated.h"
 
 UCLASS()
@@ -26,6 +27,7 @@ public:
 	void PlayFireMontage(bool bAiming);
 	void PlayHitReactionMontage();
 	void PlayElimMontage();
+	void PlayReloadMontage();
 	virtual void OnRep_ReplicatedMovement() override;
 
 	void Elim();
@@ -54,9 +56,14 @@ protected:
 	virtual void Jump() override;
 	void FireButtonPressed();
 	void FireButtonReleased();
+	void ReloadButtonPressed();
 
 	UFUNCTION()
 	void ReceiveDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, class AController* InstigatorController, AActor* DamageCauser);	
+
+	// Poll for any relevant classes and initialize our HUD
+	void PollInit();
+
 private:
 	UPROPERTY(VisibleAnywhere, Category = Camera)
 	class USpringArmComponent* CameraBoom;
@@ -73,7 +80,7 @@ private:
 	UFUNCTION()
 	void OnRep_OverlappingWeapon(AWeapon* LastWeapon);
 
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UCombatComponent* Combat;
 
 	UFUNCTION(Server, Reliable)
@@ -95,6 +102,9 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = Combat)
 	UAnimMontage* ElimMontage;
+
+	UPROPERTY(EditAnywhere, Category = Combat)
+	UAnimMontage* ReloadMontage;
 
 	void HideCameraIfCharacterClose();
 
@@ -122,6 +132,7 @@ private:
 	UFUNCTION()
 	void OnRep_Health();
 
+	UPROPERTY()
 	class ABlasterPlayerController* BlasterPlayerController;
 	bool bElimmed = false;
 
@@ -171,6 +182,10 @@ private:
 
 	UPROPERTY(EditAnywhere)
 	class USoundCue* ElimBotSound;
+
+	UPROPERTY()
+	class ABlasterPlayerState* BlasterPlayerState;
+
 public:	
 	void SetOverlappingWeapon(AWeapon* Weapon);
 	bool IsWeaponEquipped();
@@ -183,4 +198,7 @@ public:
 	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	FORCEINLINE bool ShouldRotateRootBone() const { return bRotateRootBone; }
 	FORCEINLINE bool IsElimmed() const { return bElimmed; }
+	FORCEINLINE float GetHealth() const { return Health; }
+	FORCEINLINE float GetMaxHealth() const { return MaxHealth; }
+	ECombatState GetCombatState() const;
 };

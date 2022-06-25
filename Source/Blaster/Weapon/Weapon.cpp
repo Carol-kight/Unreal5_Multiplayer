@@ -10,6 +10,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Casing.h"
 #include "Engine/SkeletalMeshSocket.h"
+#include "Blaster/PlayerController/BlasterPlayerController.h"
 
 // Sets default values
 AWeapon::AWeapon()
@@ -59,6 +60,7 @@ void AWeapon::BeginPlay()
 		AreaSphere->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Overlap);
 		AreaSphere->OnComponentBeginOverlap.AddDynamic(this, &ThisClass::OnSphereOverlap);
 		AreaSphere->OnComponentEndOverlap.AddDynamic(this, &ThisClass::OnSphereEndOverlap);
+
 	}
 
 	if (PickUpWidget)
@@ -78,6 +80,8 @@ void AWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeP
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AWeapon, WeaponState);
+	// 我加了复制条件，有错再改
+	DOREPLIFETIME_CONDITION(AWeapon, Ammo, COND_OwnerOnly);
 }
 
 void AWeapon::Fire(const FVector& HitTarget)
@@ -104,7 +108,47 @@ void AWeapon::Fire(const FVector& HitTarget)
 			}
 		}
 	}
+	SpendRound();
 }
+
+void AWeapon::SpendRound()
+{
+	Ammo = FMath::Clamp(Ammo - 1, 0, MagCapacity);
+	SetHUDAmmo();
+}
+
+void AWeapon::OnRep_WeaponAmmo()
+{
+	SetHUDAmmo();
+}
+
+void AWeapon::OnRep_Owner()
+{
+	Super::OnRep_Owner();
+	if (Owner == nullptr)
+	{
+		BlasterOwnerCharacter = nullptr;
+		BlasterOwnerController = nullptr;
+	}
+	else
+	{
+		SetHUDAmmo();
+	}
+}
+
+void AWeapon::SetHUDAmmo()
+{
+	BlasterOwnerCharacter = BlasterOwnerCharacter == nullptr ? Cast<ABlasterCharacter>(GetOwner()) : BlasterOwnerCharacter;
+	if (BlasterOwnerCharacter)
+	{
+		BlasterOwnerController = BlasterOwnerController == nullptr ? Cast<ABlasterPlayerController>(BlasterOwnerCharacter->Controller) : BlasterOwnerController;
+		if (BlasterOwnerController)
+		{
+			BlasterOwnerController->SetHUDWeaponAmmo(Ammo);
+		}
+	}
+}
+
 
 void AWeapon::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
@@ -182,5 +226,12 @@ void AWeapon::Dropped()
 	FDetachmentTransformRules DetachRule(EDetachmentRule::KeepWorld, true);
 	WeaponMesh->DetachFromComponent(DetachRule);
 	SetOwner(nullptr);
+	BlasterOwnerCharacter = nullptr;
+	BlasterOwnerController = nullptr;
+}
+
+bool AWeapon::IsEmpty() 
+{
+	return Ammo <= 0;
 }
 

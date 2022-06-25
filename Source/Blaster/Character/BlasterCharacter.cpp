@@ -19,6 +19,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundCue.h"
 #include "Particles/ParticleSystemComponent.h"
+#include "Blaster/PlayerState/BlasterPlayerState.h"
 
 // Sets default values
 ABlasterCharacter::ABlasterCharacter()
@@ -59,16 +60,6 @@ ABlasterCharacter::ABlasterCharacter()
 	DissolveTimeline = CreateDefaultSubobject<UTimelineComponent>(TEXT("DissolveTimelineComponent"));
 }
 
-void ABlasterCharacter::Destroyed()
-{
-	Super::Destroyed();
-
-	if (ElimBotComponent)
-	{
-		ElimBotComponent->DestroyComponent();
-	}
-}
-
 // Called when the game starts or when spawned
 void ABlasterCharacter::BeginPlay()
 {
@@ -78,6 +69,42 @@ void ABlasterCharacter::BeginPlay()
 	if (HasAuthority())
 	{
 		OnTakeAnyDamage.AddDynamic(this, &ThisClass::ReceiveDamage);
+	}
+}
+
+// Called every frame
+void ABlasterCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (GetLocalRole() > ENetRole::ROLE_SimulatedProxy && IsLocallyControlled())
+	{
+		AimOffset(DeltaTime);
+	}
+	else
+	{
+		TimeSinceLastMovementReplication += DeltaTime;
+		if (TimeSinceLastMovementReplication > 0.25f)
+		{
+			OnRep_ReplicatedMovement();
+		}
+		CaculateAO_Pitch();
+	}
+
+	HideCameraIfCharacterClose();
+	PollInit();
+}
+
+void ABlasterCharacter::PollInit()
+{
+	if (BlasterPlayerState == nullptr)
+	{
+		BlasterPlayerState = GetPlayerState<ABlasterPlayerState>();
+		if (BlasterPlayerState)
+		{
+			BlasterPlayerState->AddScore(0.f);
+			BlasterPlayerState->AddDefeats(0);
+		}	
 	}
 }
 
@@ -110,6 +137,10 @@ void ABlasterCharacter::ElimTimerFinished()
 
 void ABlasterCharacter::MulticastElim_Implementation()
 {
+	if (BlasterPlayerController)
+	{
+		BlasterPlayerController->SetHUDWeaponAmmo(0);
+	}
 	bElimmed = true;
 	PlayElimMontage();
 
@@ -153,6 +184,16 @@ void ABlasterCharacter::MulticastElim_Implementation()
 			ElimBotSound,
 			GetActorLocation()
 		);
+	}
+}
+
+void ABlasterCharacter::Destroyed()
+{
+	Super::Destroyed();
+
+	if (ElimBotComponent)
+	{
+		ElimBotComponent->DestroyComponent();
 	}
 }
 
@@ -239,26 +280,27 @@ void ABlasterCharacter::PlayElimMontage()
 	}
 }
 
-// Called every frame
-void ABlasterCharacter::Tick(float DeltaTime)
+void ABlasterCharacter::PlayReloadMontage()
 {
-	Super::Tick(DeltaTime);
+	if (Combat == nullptr || Combat->EquippedWeapon == nullptr) return;
 
-	if (GetLocalRole() > ENetRole::ROLE_SimulatedProxy && IsLocallyControlled())
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance && ReloadMontage)
 	{
-		AimOffset(DeltaTime);
-	}
-	else
-	{
-		TimeSinceLastMovementReplication += DeltaTime;
-		if (TimeSinceLastMovementReplication > 0.25f)
+		AnimInstance->Montage_Play(ReloadMontage);
+		FName SectionName;
+		
+		switch (Combat->EquippedWeapon->GetWeaponType())
 		{
-			OnRep_ReplicatedMovement();
+		case EWeaponType::EWT_AssaultRifle:
+			SectionName = FName("Rifle");
+			break;
+		default:
+			break;
 		}
-		CaculateAO_Pitch();
-	}
 
-	HideCameraIfCharacterClose();
+		AnimInstance->Montage_JumpToSection(SectionName);
+	}
 }
 
 void ABlasterCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -295,6 +337,7 @@ void ABlasterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 	PlayerInputComponent->BindAction("Aim", IE_Released, this, &ThisClass::AimButtonReleased);
 	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &ThisClass::FireButtonPressed);
 	PlayerInputComponent->BindAction("Fire", IE_Released, this, &ThisClass::FireButtonReleased);
+	PlayerInputComponent->BindAction("Reload", IE_Released, this, &ThisClass::ReloadButtonPressed);
 }
 
 void ABlasterCharacter::MoveForward(float Value)
@@ -353,6 +396,14 @@ void ABlasterCharacter::FireButtonReleased()
 	if (Combat)
 	{
 		Combat->FireButtonPressed(false);
+	}
+}
+
+void ABlasterCharacter::ReloadButtonPressed()
+{
+	if (Combat)
+	{
+		Combat->Reload();
 	}
 }
 
@@ -564,7 +615,7 @@ void ABlasterCharacter::StartDissolve()
 
 void ABlasterCharacter::SetOverlappingWeapon(AWeapon* Weapon)
 {
-	if (!Weapon)
+	if (OverlappingWeapon)
 	{
 		OverlappingWeapon->ShowPickUpWidget(false);
 	}
@@ -612,6 +663,12 @@ FVector ABlasterCharacter::GetHitTarget() const
 {
 	if (Combat == nullptr) return FVector();
 	return Combat->HitTarget;
+}
+
+ECombatState ABlasterCharacter::GetCombatState() const
+{
+	if (Combat == nullptr) return ECombatState::ECS_MAX;
+	return Combat->CombatState;
 }
 
 
