@@ -27,6 +27,8 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void FinishReloading();
+
+	void FireButtonPressed(bool bPressed);
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
@@ -37,8 +39,6 @@ protected:
 
 	UFUNCTION()
 	void OnRep_EquippedWeapon();
-
-	void FireButtonPressed(bool bPressed);
 
 	void Fire();
 
@@ -54,6 +54,8 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerReload();
+
+	int32 AmountToReload();
 private:
 	UPROPERTY()
 	class ABlasterCharacter* Character;
@@ -130,6 +132,9 @@ private:
 	UPROPERTY(EditAnywhere)
 	int32 StartingARAmmo = 30;
 
+	UPROPERTY(EditAnywhere)
+	int32 StartingRocketAmmo = 4;
+
 	void InitializeCarriedAmmo();
 
 	/**
@@ -143,6 +148,8 @@ private:
 	void OnRep_CombatState();
 
 	void HandleReload();
+
+	void UpdateAmmoValues();
 public:	
 
 };
