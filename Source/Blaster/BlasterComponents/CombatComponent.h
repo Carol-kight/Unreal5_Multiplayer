@@ -27,6 +27,11 @@ public:
 	void FinishReloading();
 
 	void FireButtonPressed(bool bPressed);
+
+	UFUNCTION(BlueprintCallable)
+	void ShotgunShellReload();
+
+	void JumpToShotgunEnd();
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
@@ -142,6 +147,12 @@ private:
 	UPROPERTY(EditAnywhere)
 	int32 StartingShotgunAmmo = 5;
 
+	UPROPERTY(EditAnywhere)
+	int32 StartingSniperRifleAmmo = 12;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingGrenadeLauncherAmmo = 2;
+
 	void InitializeCarriedAmmo();
 
 	/**
@@ -157,6 +168,7 @@ private:
 	void HandleReload();
 
 	void UpdateAmmoValues();
+	void UpdateShotgunAmmoValues();
 public:	
 
 };
