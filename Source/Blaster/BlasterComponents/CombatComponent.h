@@ -41,6 +41,8 @@ public:
 	void ShotgunShellReload();
 
 	void JumpToShotgunEnd();
+
+	void PickupAmmo(EWeaponType WeaponType, int32 Ammo);
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
@@ -156,6 +158,9 @@ private:
 	void OnRep_CarriedAmmo();
 
 	TMap<EWeaponType, int32> CarriedAmmoMap;
+
+	UPROPERTY(EditAnywhere)
+	int32 MaxCarrideAmmo = 500;
 
 	UPROPERTY(EditAnywhere)
 	int32 StartingARAmmo = 30;

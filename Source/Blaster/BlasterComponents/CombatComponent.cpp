@@ -428,6 +428,19 @@ bool UCombatComponent::CanFire()
 	return !EquippedWeapon->IsEmpty() && bCanFire && CombatState == ECombatState::ECS_Unoccupied;
 }
 
+void UCombatComponent::PickupAmmo(EWeaponType WeaponType, int32 Ammo)
+{
+	if (CarriedAmmoMap.Contains(WeaponType))
+	{
+		CarriedAmmoMap[WeaponType] = FMath::Clamp(CarriedAmmoMap[WeaponType] + Ammo, 0, MaxCarrideAmmo);
+		UpdateCarriedAmmo();
+	}
+	if (EquippedWeapon && EquippedWeapon->IsEmpty() && EquippedWeapon->GetWeaponType() == WeaponType)
+	{
+		Reload();
+	}
+}
+
 void UCombatComponent::OnRep_CarriedAmmo()
 {
 	Controller = Controller == nullptr ? Cast<ABlasterPlayerController>(Character->Controller) : Controller;
@@ -636,7 +649,7 @@ void UCombatComponent::ServerLaunchGrenade_Implementation(const FVector_NetQuant
 				StartingLocation,
 				ToTarget.Rotation(),
 				SpawnParams
-				);
+			);
 		}
 	}
 }

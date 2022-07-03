@@ -20,6 +20,8 @@
 #include "Sound/SoundCue.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "Blaster/PlayerState/BlasterPlayerState.h"
+#include "../BlasterComponents/BuffComponent.h"
+#include "NiagaraComponent.h"
 
 // Sets default values
 ABlasterCharacter::ABlasterCharacter()
@@ -45,6 +47,14 @@ ABlasterCharacter::ABlasterCharacter()
 	Combat = CreateDefaultSubobject<UCombatComponent>(TEXT("CombatComponent"));
 	// Components很特殊，不需要注册等操作，直接设置为true就可以复制
 	Combat->SetIsReplicated(true);
+
+	Buff = CreateDefaultSubobject<UBuffComponent>("Buff");
+	Buff->SetIsReplicated(true);
+
+	BuffEffectComp = CreateDefaultSubobject<UNiagaraComponent>("BuffEffect");
+	BuffEffectComp->SetupAttachment(GetMesh());
+	BuffEffectComp->SetIsReplicated(true);
+
 	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
 
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore);
@@ -70,6 +80,7 @@ void ABlasterCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	UpdateHealth();
+	UpdateShield();
 	if (HasAuthority())
 	{
 		OnTakeAnyDamage.AddDynamic(this, &ThisClass::ReceiveDamage);
@@ -78,6 +89,8 @@ void ABlasterCharacter::BeginPlay()
 	{
 		AttachedGrenade->SetVisibility(false);
 	}
+	BuffEffectComp->SetVisibility(false);
+	bShowedBuffEffect = false;
 }
 
 // Called every frame
@@ -88,6 +101,17 @@ void ABlasterCharacter::Tick(float DeltaTime)
 	RotateInPlace(DeltaTime);	
 	HideCameraIfCharacterClose();
 	PollInit();
+
+	if (!bShowedBuffEffect && Shield > 0.f)
+	{
+		bShowedBuffEffect = true;
+		BuffEffectComp->SetVisibility(true);
+	}
+	else if(bShowedBuffEffect && Shield <= 0.f)
+	{
+		BuffEffectComp->SetVisibility(false);
+		bShowedBuffEffect = false;
+	}
 }
 
 void ABlasterCharacter::RotateInPlace(float DeltaTime)
@@ -242,12 +266,39 @@ void ABlasterCharacter::UpdateHealth()
 	}
 }
 
+void ABlasterCharacter::UpdateShield()
+{
+	BlasterPlayerController = BlasterPlayerController == nullptr ? Cast<ABlasterPlayerController>(Controller) : BlasterPlayerController;
+	if (BlasterPlayerController)
+	{
+		BlasterPlayerController->SetHUDShield(Shield, MaxShield);
+	}
+}
+
 void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, class AController* InstigatorController, AActor* DamageCauser)
 {
 	if (bElimmed) return;
-	Health = FMath::Clamp(Health - Damage, 0.f, MaxHealth);
-	// 在服务器调用
+
+	float DamageToHealth = Damage;
+	if (Shield > 0.f)
+	{
+		if (Shield >= Damage)
+		{
+			Shield = FMath::Clamp(Shield - Damage, 0, MaxShield);
+			DamageToHealth = 0.f;
+		}
+		else
+		{
+			Shield = 0.f;
+			DamageToHealth = FMath::Clamp(Damage - Shield, 0, Damage);
+		}
+	}
+
+	Health = FMath::Clamp(Health - DamageToHealth, 0.f, MaxHealth);
+
 	UpdateHealth();
+	UpdateShield();
+
 	PlayHitReactionMontage();
 
 	if (Health == 0.f)
@@ -265,10 +316,22 @@ void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const 
 /// <summary>
 /// 只在客户端调用
 /// </summary>
-void ABlasterCharacter::OnRep_Health()
+void ABlasterCharacter::OnRep_Health(float LastHealth)
 {
 	UpdateHealth();
-	PlayHitReactionMontage();
+	if (Health < LastHealth)
+	{
+		PlayHitReactionMontage();
+	}
+}
+
+void ABlasterCharacter::OnRep_Shield(float LastShield)
+{
+	UpdateShield();
+	if (Shield < LastShield)
+	{
+		PlayHitReactionMontage();
+	}
 }
 
 void ABlasterCharacter::PostInitializeComponents()
@@ -277,6 +340,12 @@ void ABlasterCharacter::PostInitializeComponents()
 	if (Combat)
 	{
 		Combat->Character = this;
+	}
+	if (Buff)
+	{
+		Buff->Character = this;
+		Buff->InitializeSpeed(GetCharacterMovement()->MaxWalkSpeed, GetCharacterMovement()->MaxWalkSpeedCrouched);
+		Buff->InitializeJumpVelocity(GetCharacterMovement()->JumpZVelocity);
 	}
 }
 
@@ -374,6 +443,7 @@ void ABlasterCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
 	DOREPLIFETIME_CONDITION(ABlasterCharacter, OverlappingWeapon, COND_OwnerOnly);
 	DOREPLIFETIME(ABlasterCharacter, Health);
+	DOREPLIFETIME(ABlasterCharacter, Shield);
 	DOREPLIFETIME(ABlasterCharacter, bDisableGameplay);
 }
 

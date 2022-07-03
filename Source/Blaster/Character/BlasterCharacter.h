@@ -42,11 +42,12 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent)
 	void ShowSniperScopeWidget(bool bShowScope);
+
+	void UpdateHealth();
+	void UpdateShield();
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-
-	void UpdateHealth();
 
 	void MoveForward(float Value);
 	void MoveRight(float Value);
@@ -73,6 +74,9 @@ protected:
 	void PollInit();
 	void RotateInPlace(float DeltaTime);
 private:
+	UPROPERTY()
+	class ABlasterPlayerController* BlasterPlayerController;
+
 	UPROPERTY(VisibleAnywhere, Category = Camera)
 	class USpringArmComponent* CameraBoom;
 
@@ -90,6 +94,15 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UCombatComponent* Combat;
+
+	UPROPERTY(VisibleAnywhere)
+	class UBuffComponent* Buff;
+
+	// 护盾特效等
+	UPROPERTY(VisibleAnywhere)
+	class UNiagaraComponent* BuffEffectComp;
+
+	bool bShowedBuffEffect = false;
 
 	UFUNCTION(Server, Reliable)
 	void ServerEquipButtonPressed();
@@ -141,11 +154,20 @@ private:
 	float Health = 100.f;
 
 	UFUNCTION()
-	void OnRep_Health();
+	void OnRep_Health(float LastHealth);
 
-	UPROPERTY()
-	class ABlasterPlayerController* BlasterPlayerController;
-	bool bElimmed = false;
+	/**
+	 * Player Shield
+	 */
+
+	UPROPERTY(EditAnywhere, Category = "Play Stats")
+	float MaxShield = 100.f;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Shield, VisibleAnywhere, Category = "Play Stats")
+	float Shield = 100.f;
+
+	UFUNCTION()
+	void OnRep_Shield(float LastShield);
 
 	/**
 	 * Character Respawn
@@ -157,6 +179,8 @@ private:
 	float ElimDelay = 3.f;
 
 	void ElimTimerFinished();
+
+	bool bElimmed = false;
 
 	/**
 	 * Dissolve effect
@@ -217,10 +241,15 @@ public:
 	FORCEINLINE bool ShouldRotateRootBone() const { return bRotateRootBone; }
 	FORCEINLINE bool IsElimmed() const { return bElimmed; }
 	FORCEINLINE float GetHealth() const { return Health; }
+	FORCEINLINE void SetHealth(float Amount) { Health = Amount; }
 	FORCEINLINE float GetMaxHealth() const { return MaxHealth; }
+	FORCEINLINE float GetShield() const { return Shield; }
+	FORCEINLINE void SetShield(float Amount) { Shield = Amount; }
+	FORCEINLINE float GetMaxShield() const { return MaxShield; }
 	ECombatState GetCombatState() const;
 	FORCEINLINE UCombatComponent* GetCombat() const { return Combat; }
 	FORCEINLINE bool GetDisableGameplay() const { return bDisableGameplay; }
 	FORCEINLINE UAnimMontage* GetReloadMontage() const { return ReloadMontage; }
 	FORCEINLINE UStaticMeshComponent* GetAttachedGrenade() const { return AttachedGrenade; }
+	FORCEINLINE UBuffComponent* GetBuff() const { return Buff; }
 };
