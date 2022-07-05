@@ -46,6 +46,9 @@ public:
 	void JumpToShotgunEnd();
 
 	void PickupAmmo(EWeaponType WeaponType, int32 Ammo);
+
+	bool bLocallyReloading = false;
+
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
@@ -62,12 +65,22 @@ protected:
 
 	void Fire();
 	void LocalFire(const FVector_NetQuantize& TraceHitTarget);
+	void ShotgunLocalFire(const TArray<FVector_NetQuantize>& TraceHitTargets);
+	void HitScanFire();
+	void ProjectileFire();
+	void ShotgunFire();
 
 	UFUNCTION(Server, Reliable)
 	void ServerFire(const FVector_NetQuantize& TraceHitTarget);
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastFire(const FVector_NetQuantize& TraceHitTarget);
+
+	UFUNCTION(Server, Reliable)
+	void ServerShotgunFire(const TArray<FVector_NetQuantize>& TraceHitTargets);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastShotgunFire(const TArray<FVector_NetQuantize>& TraceHitTargets);
 
 	void TraceUnderCrosshairs(FHitResult& TraceHitResult);
 
@@ -108,8 +121,13 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_SecondaryWeapon)
 	AWeapon* SecondaryWeapon;
 
-	UPROPERTY(Replicated)
-	bool bIsAiming;
+	UPROPERTY(ReplicatedUsing = OnRep_IsAiming)
+	bool bIsAiming = false;
+
+	UFUNCTION()
+	void OnRep_IsAiming();
+
+	bool bIsAimingButtonPressed = false;
 
 	UPROPERTY(EditAnywhere)
 	float BaseWalkSpeed;

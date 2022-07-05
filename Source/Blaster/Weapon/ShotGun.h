@@ -4,19 +4,19 @@
 
 #include "CoreMinimal.h"
 #include "HitScanWeapon.h"
-#include "ShotGun.generated.h"
+#include "Shotgun.generated.h"
 
 /**
  * 
  */
 UCLASS()
-class BLASTER_API AShotGun : public AHitScanWeapon
+class BLASTER_API AShotgun : public AHitScanWeapon
 {
 	GENERATED_BODY()
 
 public:
-	virtual void Fire(const FVector& HitTarget) override;
-
+	void ShotgunFire(const TArray<FVector_NetQuantize>& HitTargets);
+	virtual void ShotgunTraceEndWithScatter(const FVector& HitTarget, TArray<FVector_NetQuantize>& HitTargets);
 private:
 	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
 	uint32 NumberOfPellets = 10;

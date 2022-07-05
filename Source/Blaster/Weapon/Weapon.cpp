@@ -12,6 +12,7 @@
 #include "Engine/SkeletalMeshSocket.h"
 #include "Blaster/PlayerController/BlasterPlayerController.h"
 #include "Blaster/BlasterComponents/CombatComponent.h"
+#include "Kismet/KismetMathLibrary.h"
 
 // Sets default values
 AWeapon::AWeapon()
@@ -65,7 +66,7 @@ void AWeapon::EnableCustomDepth(bool bIsEnabled)
 void AWeapon::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
 	// 本地执行以下逻辑
 	// 启用碰撞体
 	AreaSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
@@ -92,8 +93,6 @@ void AWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeP
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AWeapon, WeaponState);
-	// 我加了复制条件，有错再改
-	DOREPLIFETIME_CONDITION(AWeapon, Ammo, COND_OwnerOnly);
 }
 
 void AWeapon::Fire(const FVector& HitTarget)
@@ -120,20 +119,46 @@ void AWeapon::Fire(const FVector& HitTarget)
 			}
 		}
 	}
-	if (HasAuthority())
-	{
-		SpendRound();
-	}
+	SpendRound();
 }
 
 void AWeapon::SpendRound()
 {
 	Ammo = FMath::Clamp(Ammo - 1, 0, MagCapacity);
 	SetHUDAmmo();
+	if (HasAuthority())
+	{
+		ClientUpdateAmmo(Ammo);
+	}
+	else
+	{
+		++Sequence;
+	}
 }
 
-void AWeapon::OnRep_WeaponAmmo()
+void AWeapon::ClientUpdateAmmo_Implementation(int32 ServerAmmo)
 {
+	if (HasAuthority()) return;
+	Ammo = ServerAmmo;
+	// 未处理的RPC，即子弹打出去之后服务器还没反应过来的数量，需要减去这个数字才是当前客户端真实的子弹数
+	--Sequence;
+	Ammo -= Sequence;
+	SetHUDAmmo();
+}
+
+// AddAmmo只在服务器执行，所以可以直接调用ClientAddAmmo
+void AWeapon::AddAmmo(int32 AmmoToAdd)
+{
+	Ammo = FMath::Clamp(Ammo + AmmoToAdd, 0, MagCapacity);
+	// 如果刚好是服务器，那么它需要更新HUD。如果是客户端换弹，那么这一步其实没有意义，因为服务器看不见客户端的HUD
+	SetHUDAmmo();
+	ClientAddAmmo(AmmoToAdd);
+}
+
+void AWeapon::ClientAddAmmo_Implementation(int32 AmmoToAdd)
+{
+	if (HasAuthority()) return;
+	Ammo = FMath::Clamp(Ammo + AmmoToAdd, 0, MagCapacity);
 	BlasterOwnerCharacter = BlasterOwnerCharacter == nullptr ? Cast<ABlasterCharacter>(GetOwner()) : BlasterOwnerCharacter;
 	if (BlasterOwnerCharacter && BlasterOwnerCharacter->GetCombat() && IsFull())
 	{
@@ -171,12 +196,6 @@ void AWeapon::SetHUDAmmo()
 			BlasterOwnerController->SetHUDWeaponAmmo(Ammo);
 		}
 	}
-}
-
-void AWeapon::AddAmmo(int32 AmmoToAdd)
-{
-	Ammo = FMath::Clamp(Ammo + AmmoToAdd, 0, MagCapacity);
-	SetHUDAmmo();
 }
 
 void AWeapon::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -307,4 +326,34 @@ bool AWeapon::IsFull()
 {
 	return Ammo == MagCapacity;
 }
+
+FVector AWeapon::TraceEndWithScatter(const FVector& HitTarget)
+{
+	const USkeletalMeshSocket* MuzzleFlashSocket = GetWeaponMesh()->GetSocketByName(FName("MuzzleFlash"));
+	if (MuzzleFlashSocket == nullptr) return FVector();
+	const FTransform SocketTransform = MuzzleFlashSocket->GetSocketTransform(GetWeaponMesh());
+	const FVector TraceStart = SocketTransform.GetLocation();
+
+	// 最初射线的方向
+	const FVector ToTargetNormalized = (HitTarget - TraceStart).GetSafeNormal();
+	// 球心
+	const FVector SphereCenter = TraceStart + ToTargetNormalized * DistanceToSphere;
+	// 随机一个点
+	const FVector RandVec = UKismetMathLibrary::RandomUnitVector() * FMath::FRandRange(0.f, SphereRadius);
+	const FVector EndLoc = SphereCenter + RandVec;
+	// 最终射线的方向
+	const FVector ToEndLoc = EndLoc - TraceStart;
+
+	/*DrawDebugSphere(GetWorld(), SphereCenter, SphereRadius, 12, FColor::Red, true);
+	DrawDebugSphere(GetWorld(), EndLoc, 4.f, 12, FColor::Orange, true);
+	DrawDebugLine(GetWorld(),
+		TraceStart,
+		FVector(TraceStart + ToEndLoc * TRACE_LENGTH / ToEndLoc.Size()),
+		FColor::Cyan,
+		true
+	);*/
+
+	return FVector(TraceStart + ToEndLoc * TRACE_LENGTH / ToEndLoc.Size());
+}
+
 

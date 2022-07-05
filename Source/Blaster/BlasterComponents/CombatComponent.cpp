@@ -16,6 +16,7 @@
 #include "Sound/SoundCue.h"
 #include "Blaster/Character/BlasterAnimInstance.h"
 #include "Blaster/Weapon/Projectile.h"
+#include "../Weapon/Shotgun.h"
 
 // Sets default values for this component's properties
 UCombatComponent::UCombatComponent()
@@ -99,11 +100,21 @@ void UCombatComponent::Fire()
 	if (CanFire())
 	{
 		bCanFire = false;
-		ServerFire(HitTarget);
-		LocalFire(HitTarget);
 		if (EquippedWeapon)
 		{
 			CrosshairShootingFactor = 1.f;
+			switch (EquippedWeapon->FireType)
+			{
+			case EFireType::EFT_HitScan:
+				HitScanFire();
+				break;
+			case EFireType::EFT_Projectile:
+				ProjectileFire();
+				break;
+			case EFireType::EFT_Shotgun:
+				ShotgunFire();
+				break;
+			}
 		}
 		StartFireTimer();
 	}
@@ -142,20 +153,71 @@ void UCombatComponent::MulticastFire_Implementation(const FVector_NetQuantize& T
 	LocalFire(TraceHitTarget);
 }
 
+void UCombatComponent::ServerShotgunFire_Implementation(const TArray<FVector_NetQuantize>& TraceHitTargets)
+{
+	MulticastShotgunFire(TraceHitTargets);
+}
+
+void UCombatComponent::MulticastShotgunFire_Implementation(const TArray<FVector_NetQuantize>& TraceHitTargets)
+{
+	if (Character && Character->IsLocallyControlled() && !Character->HasAuthority()) return;
+	ShotgunLocalFire(TraceHitTargets);
+}
+
 void UCombatComponent::LocalFire(const FVector_NetQuantize& TraceHitTarget)
 {
 	if (EquippedWeapon == nullptr) return;
-	if (Character && CombatState == ECombatState::ECS_Reloading && EquippedWeapon->GetWeaponType() == EWeaponType::EWT_Shotgun)
-	{
-		Character->PlayFireMontage(bIsAiming);
-		EquippedWeapon->Fire(TraceHitTarget);
-		CombatState = ECombatState::ECS_Unoccupied;
-		return;
-	}
 	if (Character && CombatState == ECombatState::ECS_Unoccupied)
 	{
 		Character->PlayFireMontage(bIsAiming);
 		EquippedWeapon->Fire(TraceHitTarget);
+	}
+}
+
+void UCombatComponent::ShotgunLocalFire(const TArray<FVector_NetQuantize>& TraceHitTargets)
+{
+	AShotgun* Shotgun = Cast<AShotgun>(EquippedWeapon);
+	if (Shotgun == nullptr || Character == nullptr) return;
+	if (Character && CombatState == ECombatState::ECS_Reloading || CombatState == ECombatState::ECS_Unoccupied)
+	{
+		Character->PlayFireMontage(bIsAiming);
+		Shotgun->ShotgunFire(TraceHitTargets);
+		CombatState = ECombatState::ECS_Unoccupied;
+	}
+}
+
+void UCombatComponent::HitScanFire()
+{
+	if (EquippedWeapon && Character)
+	{
+		HitTarget = EquippedWeapon->bUseScatter ? EquippedWeapon->TraceEndWithScatter(HitTarget) : HitTarget;
+		if (!Character->HasAuthority()) LocalFire(HitTarget);
+		ServerFire(HitTarget);
+	}
+}
+
+void UCombatComponent::ProjectileFire()
+{
+	if (EquippedWeapon && Character)
+	{
+		HitTarget = EquippedWeapon->bUseScatter ? EquippedWeapon->TraceEndWithScatter(HitTarget) : HitTarget;
+		if (!Character->HasAuthority()) LocalFire(HitTarget);
+		ServerFire(HitTarget);
+	}
+}
+
+void UCombatComponent::ShotgunFire()
+{
+	if (EquippedWeapon && Character)
+	{
+		AShotgun* Shotgun = Cast<AShotgun>(EquippedWeapon);
+		if (Shotgun)
+		{
+			TArray<FVector_NetQuantize> HitTargets;
+			Shotgun->ShotgunTraceEndWithScatter(HitTarget, HitTargets);
+			if (!Character->HasAuthority()) ShotgunLocalFire(HitTargets);
+			ServerShotgunFire(HitTargets);
+		}
 	}
 }
 
@@ -469,18 +531,14 @@ void UCombatComponent::SetAiming(bool bAiming)
 {
 	if (Character == nullptr || EquippedWeapon == nullptr) return;
 	bIsAiming = bAiming;
-	// 直接调用，不用判断是服务器还是客户端
-	// RPC无论是客户端还是服务器发送的，都是在服务器执行
+
 	ServerSetAiming(bAiming);
-	/*if (BlasterCharacter)
-	{
-		BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed = bAiming ? AimWalkSpeed : BaseWalkSpeed;
-	}*/
 
 	if (Character->IsLocallyControlled() && EquippedWeapon->GetWeaponType() == EWeaponType::EWT_SniperRifle)
 	{
 		Character->ShowSniperScopeWidget(bAiming);
 	}
+	if (Character && Character->IsLocallyControlled()) bIsAimingButtonPressed = bIsAiming;
 }
 
 void UCombatComponent::ServerSetAiming_Implementation(bool bAiming)
@@ -492,9 +550,18 @@ void UCombatComponent::ServerSetAiming_Implementation(bool bAiming)
 	}
 }
 
+void UCombatComponent::OnRep_IsAiming()
+{
+	if (Character && Character->IsLocallyControlled())
+	{
+		bIsAiming = bIsAimingButtonPressed;
+	}
+}
+
 bool UCombatComponent::CanFire()
 {
 	if (EquippedWeapon == nullptr) return false;
+	if (bLocallyReloading) return false;
 	if (!EquippedWeapon->IsEmpty() && bCanFire && CombatState == ECombatState::ECS_Reloading && EquippedWeapon->GetWeaponType() == EWeaponType::EWT_Shotgun) return true;
 	return !EquippedWeapon->IsEmpty() && bCanFire && CombatState == ECombatState::ECS_Unoccupied;
 }
@@ -543,9 +610,12 @@ void UCombatComponent::InitializeCarriedAmmo()
 
 void UCombatComponent::Reload()
 {
-	if (CarriedAmmo > 0 && CombatState == ECombatState::ECS_Unoccupied && EquippedWeapon && !EquippedWeapon->IsFull())
+	if (CarriedAmmo > 0 && CombatState == ECombatState::ECS_Unoccupied && EquippedWeapon && !EquippedWeapon->IsFull() && !bLocallyReloading)
 	{
 		ServerReload();
+		// 播放Montage动画
+		HandleReload();
+		bLocallyReloading = true;
 	}
 }
 
@@ -555,8 +625,8 @@ void UCombatComponent::ServerReload_Implementation()
 
 	// 修改CombatState复制到所有客户端，调用OnRep_CombatState
 	CombatState = ECombatState::ECS_Reloading;
-	// 服务器执行
-	HandleReload();
+	// 如果是本地控制的，那么说明就是服务器调用的ServerRPC，因为上面已经播放过了Montage，所以不需要再播放了
+	if (!Character->IsLocallyControlled()) HandleReload();
 }
 
 int32 UCombatComponent::AmountToReload()
@@ -682,6 +752,7 @@ void UCombatComponent::ServerThrowGrenade_Implementation()
 void UCombatComponent::FinishReloading()
 {
 	if (Character == nullptr) return;
+	bLocallyReloading = false;
 	if (Character->HasAuthority())
 	{
 		CombatState = ECombatState::ECS_Unoccupied;
@@ -735,7 +806,7 @@ void UCombatComponent::OnRep_CombatState()
 	switch (CombatState)
 	{
 	case ECombatState::ECS_Reloading:
-		HandleReload();
+		if (Character && !Character->IsLocallyControlled()) HandleReload();
 		break;
 	case ECombatState::ECS_Unoccupied:
 		if (bFireButtonPressed)
