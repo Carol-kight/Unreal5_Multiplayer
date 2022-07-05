@@ -62,7 +62,8 @@ void AShotGun::Fire(const FVector& HitTarget)
 		}
 		for (auto HitPair : HitMap)
 		{
-			if (HitPair.Key && InstigatorController && HasAuthority())
+			// 不能打自己
+			if (HitPair.Key && HitPair.Key != GetOwner() && InstigatorController && HasAuthority())
 			{
 				UGameplayStatics::ApplyDamage(
 					HitPair.Key,

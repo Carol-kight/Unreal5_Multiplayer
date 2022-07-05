@@ -64,6 +64,11 @@ protected:
 
 	UFUNCTION(Client, Reliable)
 	void ClientJoinMidGame(FName StateOfMatch, float Warmup, float Match, float Cooldown, float StartingTime);
+
+	void HighPingWarning();
+	void StopHighPingWarning();
+
+	void CheckPing(float DeltaTime);
 private:
 	UPROPERTY()
 	class ABlasterGameMode* BlasterGameMode;
@@ -91,14 +96,37 @@ private:
 
 	float HUDShield;
 	float HUDMaxShield;
-	bool bInitializShield = false;
+	bool bInitializeShield = false;
 
 	float HUDScore;
-	bool bInitializScore = false;
+	bool bInitializeScore = false;
 
 	int32 HUDDefeats;
-	bool bInitializDefeats = false;
+	bool bInitializeDefeats = false;
 	
 	int32 HUDGrenades;
-	bool bInitializGrenades = false;
+	bool bInitializeGrenades = false;
+
+	int32 HUDCarriedAmmo;
+	bool bInitializeCarriedAmmo = false;
+
+	int32 HUDWeaponAmmo;
+	bool bInitializeWeaponAmmo = false;
+
+	/**
+	 * Ping
+	 */
+
+	float HighPingRunningTime = 0.f;
+
+	UPROPERTY(EditAnywhere)
+	float HighPingDuration = 5.f;
+
+	UPROPERTY(EditAnywhere)
+	float CheckPingFrequency = 6.f;
+
+	UPROPERTY(EditAnywhere)
+	float HighPingThreshold = 50.f;
+
+	float HighPingAnimRunningTime = 0.f;
 };

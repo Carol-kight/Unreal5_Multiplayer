@@ -40,7 +40,7 @@ void UBuffComponent::HealRampUp(float DeltaTime)
 	float HealThisFrame = HealRate * DeltaTime;
 	Character->SetHealth(FMath::Clamp(Character->GetHealth() + HealThisFrame, 0, Character->GetMaxHealth()));
 	// update health UI
-	Character->UpdateHealth();
+	Character->UpdateHUDHealth();
 	
 	HealAmount -= HealThisFrame;
 	if (HealAmount <= 0.f || Character->GetHealth() >= Character->GetMaxHealth())
@@ -64,7 +64,7 @@ void UBuffComponent::ShieldRampUp(float DeltaTime)
 	float ShieldThisFrame = ShieldReplenishRate * DeltaTime;
 	Character->SetShield(FMath::Clamp(Character->GetShield() + ShieldThisFrame, 0, Character->GetMaxShield()));
 	// update shield UI
-	Character->UpdateShield();
+	Character->UpdateHUDShield();
 
 	ShieldReplenishAmount -= ShieldThisFrame;
 	if (ShieldReplenishAmount <= 0.f || Character->GetShield() >= Character->GetMaxShield())

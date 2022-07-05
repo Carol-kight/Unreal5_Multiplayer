@@ -41,8 +41,8 @@ ABlasterCharacter::ABlasterCharacter()
 	bUseControllerRotationYaw = false;
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 
-	OverHeadWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverHeadWidget"));
-	OverHeadWidget->SetupAttachment(RootComponent);
+	/*OverHeadWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverHeadWidget"));
+	OverHeadWidget->SetupAttachment(RootComponent);*/
 
 	Combat = CreateDefaultSubobject<UCombatComponent>(TEXT("CombatComponent"));
 	// Components很特殊，不需要注册等操作，直接设置为true就可以复制
@@ -78,9 +78,10 @@ ABlasterCharacter::ABlasterCharacter()
 void ABlasterCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-
-	UpdateHealth();
-	UpdateShield();
+	SpawnDefaultWeapon();
+	UpdateHUDAmmo();
+	UpdateHUDHealth();
+	UpdateHUDShield();
 	if (HasAuthority())
 	{
 		OnTakeAnyDamage.AddDynamic(this, &ThisClass::ReceiveDamage);
@@ -109,8 +110,8 @@ void ABlasterCharacter::Tick(float DeltaTime)
 	}
 	else if(bShowedBuffEffect && Shield <= 0.f)
 	{
-		BuffEffectComp->SetVisibility(false);
 		bShowedBuffEffect = false;
+		BuffEffectComp->SetVisibility(false);
 	}
 }
 
@@ -152,10 +153,8 @@ void ABlasterCharacter::PollInit()
 
 void ABlasterCharacter::Elim()
 {
-	if (Combat && Combat->EquippedWeapon)
-	{
-		Combat->EquippedWeapon->Dropped();
-	}
+	// 武器是丢下还是销毁
+	DropOrDestroyWeapons();
 	// 在服务器执行，然后所有客户端都能执行该函数
 	MulticastElim();
 
@@ -166,6 +165,28 @@ void ABlasterCharacter::Elim()
 		&ThisClass::ElimTimerFinished,
 		ElimDelay
 	);
+}
+
+void ABlasterCharacter::DropOrDestroyWeapon(AWeapon* Weapon)
+{
+	if (Weapon == nullptr) return;
+	if (Weapon->bDestroyed == true)
+	{
+		Weapon->Destroy();
+	}
+	else
+	{
+		Weapon->Dropped();
+	}
+}
+
+void ABlasterCharacter::DropOrDestroyWeapons()
+{
+	if (Combat)
+	{
+		if (Combat->EquippedWeapon)	DropOrDestroyWeapon(Combat->EquippedWeapon);
+		if (Combat->SecondaryWeapon)	DropOrDestroyWeapon(Combat->SecondaryWeapon);
+	}
 }
 
 void ABlasterCharacter::ElimTimerFinished()
@@ -257,7 +278,7 @@ void ABlasterCharacter::Destroyed()
 	}
 }
 
-void ABlasterCharacter::UpdateHealth()
+void ABlasterCharacter::UpdateHUDHealth()
 {
 	BlasterPlayerController = BlasterPlayerController == nullptr ? Cast<ABlasterPlayerController>(Controller) : BlasterPlayerController;
 	if (BlasterPlayerController)
@@ -266,7 +287,7 @@ void ABlasterCharacter::UpdateHealth()
 	}
 }
 
-void ABlasterCharacter::UpdateShield()
+void ABlasterCharacter::UpdateHUDShield()
 {
 	BlasterPlayerController = BlasterPlayerController == nullptr ? Cast<ABlasterPlayerController>(Controller) : BlasterPlayerController;
 	if (BlasterPlayerController)
@@ -275,8 +296,19 @@ void ABlasterCharacter::UpdateShield()
 	}
 }
 
+void ABlasterCharacter::UpdateHUDAmmo()
+{
+	BlasterPlayerController = BlasterPlayerController == nullptr ? Cast<ABlasterPlayerController>(Controller) : BlasterPlayerController;
+	if (BlasterPlayerController && Combat && Combat->EquippedWeapon)
+	{
+		BlasterPlayerController->SetHUDCarriedAmmo(Combat->CarriedAmmo);
+		BlasterPlayerController->SetHUDWeaponAmmo(Combat->EquippedWeapon->GetAmmo());
+	}
+}
+
 void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, class AController* InstigatorController, AActor* DamageCauser)
 {
+	// 淘汰之后不能造成伤害
 	if (bElimmed) return;
 
 	float DamageToHealth = Damage;
@@ -296,8 +328,8 @@ void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const 
 
 	Health = FMath::Clamp(Health - DamageToHealth, 0.f, MaxHealth);
 
-	UpdateHealth();
-	UpdateShield();
+	UpdateHUDHealth();
+	UpdateHUDShield();
 
 	PlayHitReactionMontage();
 
@@ -318,7 +350,7 @@ void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const 
 /// </summary>
 void ABlasterCharacter::OnRep_Health(float LastHealth)
 {
-	UpdateHealth();
+	UpdateHUDHealth();
 	if (Health < LastHealth)
 	{
 		PlayHitReactionMontage();
@@ -327,7 +359,7 @@ void ABlasterCharacter::OnRep_Health(float LastHealth)
 
 void ABlasterCharacter::OnRep_Shield(float LastShield)
 {
-	UpdateShield();
+	UpdateHUDShield();
 	if (Shield < LastShield)
 	{
 		PlayHitReactionMontage();
@@ -467,6 +499,7 @@ void ABlasterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 	PlayerInputComponent->BindAxis("LookUp", this, &ThisClass::LookUp);
 
 	PlayerInputComponent->BindAction("Equip", IE_Pressed, this, &ThisClass::EquipButtonPressd);
+	PlayerInputComponent->BindAction("Swap", IE_Pressed, this, &ThisClass::SwapButtonPressed);
 	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &ThisClass::CrouchButtonPressd);
 	PlayerInputComponent->BindAction("Crouch", IE_Released, this, &ThisClass::CrouchButtonReleased);
 	PlayerInputComponent->BindAction("Aim", IE_Pressed, this, &ThisClass::AimButtonPressed);
@@ -565,22 +598,29 @@ void ABlasterCharacter::EquipButtonPressd()
 	{
 		ServerEquipButtonPressed();
 	}
-	/*if (Combat )
-	{
-		if (HasAuthority())
-		{
-			Combat->EquipWeapon(OverlappingWeapon);
-		}
-		else
-		{
-			ServerEquipButtonPressed();
-		}
-	}*/
 }
 
 void ABlasterCharacter::ServerEquipButtonPressed_Implementation()
 {
 	Combat->EquipWeapon(OverlappingWeapon);
+}
+
+void ABlasterCharacter::SwapButtonPressed()
+{
+	if (bDisableGameplay) return;
+	if (Combat)
+	{
+		ServerSwapButtonPressed();
+	}
+}
+
+
+void ABlasterCharacter::ServerSwapButtonPressed_Implementation()
+{
+	if (Combat && Combat->ShouldSwapWeapon())
+	{
+		Combat->SwapWeapon();
+	}
 }
 
 void ABlasterCharacter::CrouchButtonPressd()
@@ -769,6 +809,22 @@ void ABlasterCharacter::StartDissolve()
 	}
 }
 
+void ABlasterCharacter::SpawnDefaultWeapon()
+{
+	ABlasterGameMode* BlasterGameMode = Cast<ABlasterGameMode>(UGameplayStatics::GetGameMode(this));
+	
+	UWorld* World = GetWorld();
+	if (BlasterGameMode && World && !bElimmed && DefaultWeaponClass)
+	{
+		AWeapon* DefaultWeapon = World->SpawnActor<AWeapon>(DefaultWeaponClass);
+		DefaultWeapon->bDestroyed = true;
+		if (Combat)
+		{
+			Combat->EquipWeapon(DefaultWeapon);
+		}
+	}
+}
+
 void ABlasterCharacter::SetOverlappingWeapon(AWeapon* Weapon)
 {
 	if (OverlappingWeapon)
@@ -777,7 +833,6 @@ void ABlasterCharacter::SetOverlappingWeapon(AWeapon* Weapon)
 	}
 
 	OverlappingWeapon = Weapon;
-	// 判断是否是服务器在控制该角色，因为该函数只会被服务器调用
 	if (IsLocallyControlled())
 	{
 		if (OverlappingWeapon)

@@ -19,7 +19,8 @@ void AProjectileBullet::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 	if (OwnerCharacter && OwnerCharacter->Controller)
 	{
 		AController* OwnerController = OwnerCharacter->Controller;
-		if (OwnerController)
+		// 不能打自己
+		if (OwnerController && OtherActor != OwnerCharacter)
 		{
 			UGameplayStatics::ApplyDamage(OtherActor, Damage, OwnerController, this, UDamageType::StaticClass());
 		}

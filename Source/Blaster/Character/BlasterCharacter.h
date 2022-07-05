@@ -43,8 +43,9 @@ public:
 	UFUNCTION(BlueprintImplementableEvent)
 	void ShowSniperScopeWidget(bool bShowScope);
 
-	void UpdateHealth();
-	void UpdateShield();
+	void UpdateHUDHealth();
+	void UpdateHUDShield();
+	void UpdateHUDAmmo();
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -54,6 +55,7 @@ protected:
 	void Turn(float Value);
 	void LookUp(float Value);
 	void EquipButtonPressd();
+	void SwapButtonPressed();
 	void CrouchButtonPressd();
 	void CrouchButtonReleased();
 	void AimButtonPressed();
@@ -73,6 +75,9 @@ protected:
 	// Poll for any relevant classes and initialize our HUD
 	void PollInit();
 	void RotateInPlace(float DeltaTime);
+
+	void DropOrDestroyWeapon(AWeapon* Weapon);
+	void DropOrDestroyWeapons();
 private:
 	UPROPERTY()
 	class ABlasterPlayerController* BlasterPlayerController;
@@ -83,8 +88,8 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = Camera)
 	class UCameraComponent* FollowCamera;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	class UWidgetComponent* OverHeadWidget;
+	/*UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	class UWidgetComponent* OverHeadWidget;*/
 
 	UPROPERTY(ReplicatedUsing = OnRep_OverlappingWeapon)
 	class AWeapon* OverlappingWeapon;
@@ -106,6 +111,9 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerEquipButtonPressed();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSwapButtonPressed();
 
 	float AO_Yaw;
 	float Interp_AO_Yaw;
@@ -227,6 +235,14 @@ private:
 
 	UPROPERTY(VisibleAnywhere)
 	UStaticMeshComponent* AttachedGrenade;
+
+	/**
+	 * Default Weapon
+	 */
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<AWeapon> DefaultWeaponClass;
+
+	void SpawnDefaultWeapon();
 
 public:	
 	void SetOverlappingWeapon(AWeapon* Weapon);

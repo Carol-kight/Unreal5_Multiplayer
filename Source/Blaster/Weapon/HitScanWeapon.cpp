@@ -28,7 +28,8 @@ void AHitScanWeapon::Fire(const FVector& HitTarget)
 		WeaponTraceHit(Start, HitTarget, FireHit);
 
 		ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(FireHit.GetActor());
-		if (BlasterCharacter && InstigatorController && HasAuthority())
+		// 除了榴弹炮，手榴弹，火箭筒之外的其他武器不能对自己造成伤害
+		if (BlasterCharacter && BlasterCharacter != GetOwner() && InstigatorController && HasAuthority())
 		{
 			UGameplayStatics::ApplyDamage(
 				BlasterCharacter,

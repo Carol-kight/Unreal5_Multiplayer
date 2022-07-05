@@ -29,6 +29,12 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	float BaseTurnRate = 45.f;
+
+	FTimerHandle TimerHandle_StartOverlap;
+
+	UPROPERTY(EditAnywhere)
+	float OverlapDelay = 0.2f;
+	void StartOverlap();
 private:
 	UPROPERTY(EditAnywhere)
 	USphereComponent* OverlapSphere;
