@@ -34,6 +34,9 @@ struct FFramePackage
 
 	UPROPERTY()
 	TMap<FName, FBoxInformation> HitBoxInfo;
+
+	UPROPERTY()
+	ABlasterCharacter* Character;
 };
 
 USTRUCT(BlueprintType)
@@ -48,6 +51,18 @@ struct FServerSideRewindResult
 	bool bHeadShot;
 };
 
+USTRUCT(BlueprintType)
+struct FShotgunServerSideRewindResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TMap<ABlasterCharacter*, uint8> HeadShots;
+
+	UPROPERTY()
+	TMap<ABlasterCharacter*, uint8> BodyShots;
+};
+
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class BLASTER_API ULagCompensationComponent : public UActorComponent
 {
@@ -59,12 +74,44 @@ public:
 	ULagCompensationComponent();
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	void ShowFramePackage(const FFramePackage& Packge, const FColor& Color);
+
+	/**
+	 * HitScan
+	 */
+
 	FServerSideRewindResult ServerSideRewind(
 		ABlasterCharacter* HitCharacter,
 		const FVector_NetQuantize& TraceStart,
 		const FVector_NetQuantize& HitLocation,
 		float HitTime
 	);
+
+	/**
+	 * Projectile
+	 */
+
+	FServerSideRewindResult ProjectileServerSideRewind(
+		ABlasterCharacter* HitCharacter,
+		const FVector_NetQuantize& TraceStart,
+		const FVector_NetQuantize100& InitialVelocity,
+		float HitTime
+	);
+
+	/**
+	 * Shotgun
+	 */
+
+	FFramePackage GetFrameToCheck(ABlasterCharacter* HitCharacter, float HitTime);
+	FShotgunServerSideRewindResult ShotgunServerSideRewind(
+		const TArray<ABlasterCharacter*>& HitCharacters,
+		const FVector_NetQuantize& TraceStart,
+		const TArray<FVector_NetQuantize>& HitLocations,
+		float HitTime
+	);
+
+	/**
+	 * HitScan
+	 */
 
 	UFUNCTION(Server, Reliable)
 	void ServerScoreRequest(
@@ -75,21 +122,72 @@ public:
 		class AWeapon* DamageCursor
 	);
 
+	/**
+	 * Projectile
+	 */
+
+	UFUNCTION(Server, Reliable)
+	void ServerProjectileScoreRequest(
+		ABlasterCharacter* HitCharacter,
+		const FVector_NetQuantize& TraceStart,
+		const FVector_NetQuantize100& InitialVelocity,
+		float HitTime
+	);
+
+	/**
+	 * Shotgun
+	 */
+
+	UFUNCTION(Server, Reliable)
+	void ServerShotgunScoreRequest(
+		const TArray<ABlasterCharacter*>& HitCharacters,
+		const FVector_NetQuantize& TraceStart,
+		const TArray<FVector_NetQuantize>& HitLocations,
+		float HitTime
+	);
+
 protected:
 	virtual void BeginPlay() override;
 	void SaveFramePackage(FFramePackage& FramePackage);
 	FFramePackage InterpBetweenFrames(const FFramePackage& OlderFrame, const FFramePackage& YoungerFrame, float HitTime);
+	void CacheBoxPositions(ABlasterCharacter* HitCharacter, FFramePackage& OutFramePackage);
+	void MoveBoxes(ABlasterCharacter* HitCharacter, const FFramePackage& Package);
+	void ResetHitBoxes(ABlasterCharacter* HitCharacter, const FFramePackage& Package);
+	void EnableCharacterMeshCollision(ABlasterCharacter* HitCharacter, ECollisionEnabled::Type CollisionEnabled);
+	void SaveFramePackage();
+
+	/**
+	 * HitScan
+	 */
+
 	FServerSideRewindResult ConfirmHit(
 		const FFramePackage& Package,
 		ABlasterCharacter* HitCharacter,
 		const FVector_NetQuantize& TraceStart,
 		const FVector_NetQuantize& HitLocation
 	);
-	void CacheBoxPositions(ABlasterCharacter* HitCharacter, FFramePackage& OutFramePackage);
-	void MoveBoxes(ABlasterCharacter* HitCharacter, const FFramePackage& Package);
-	void ResetHitBoxes(ABlasterCharacter* HitCharacter, const FFramePackage& Package);
-	void EnableCharacterMeshCollision(ABlasterCharacter* HitCharacter, ECollisionEnabled::Type CollisionEnabled);
-	void SaveFramePackage();
+
+	/**
+	 * Projectile
+	 */
+
+	FServerSideRewindResult ProjectileConfirmHit(
+		const FFramePackage& Package,
+		ABlasterCharacter* HitCharacter,
+		const FVector_NetQuantize& TraceStart,
+		const FVector_NetQuantize100& InitialVelocity,
+		float HitTime
+	);
+
+	/**
+	 * Shotgun 
+	 */
+
+	FShotgunServerSideRewindResult ShotgunConfirmHit(
+		const TArray<FFramePackage>& FramePackages,
+		const FVector_NetQuantize& TraceStart,
+		const TArray<FVector_NetQuantize>& HitLocations
+	);
 private:
 	UPROPERTY()
 	ABlasterCharacter* Character;

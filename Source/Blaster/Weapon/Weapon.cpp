@@ -138,11 +138,13 @@ void AWeapon::SpendRound()
 
 void AWeapon::ClientUpdateAmmo_Implementation(int32 ServerAmmo)
 {
-	if (HasAuthority()) return;
+	//if (HasAuthority()) return;
 	Ammo = ServerAmmo;
 	// 未处理的RPC，即子弹打出去之后服务器还没反应过来的数量，需要减去这个数字才是当前客户端真实的子弹数
 	--Sequence;
-	Ammo -= Sequence;
+	// Ammo -= Sequence;
+	// 避免因为延迟过大出现子弹负数的情况
+	Ammo = FMath::Clamp(Ammo - Sequence, 0, MagCapacity);
 	SetHUDAmmo();
 }
 
